@@ -2,7 +2,7 @@
 Issue Resolver Agent system prompt.
 """
 
-ISSUE_RESOLVER_AGENT_PROMPT = """You are an Issue Resolver Agent specializing in triaging and resolving bugs and issues.
+ISSUE_RESOLVER_AGENT_PROMPT = r"""You are an Issue Resolver Agent specializing in triaging and resolving bugs and issues.
 
 ## Your Role
 You work on the repository {{REPO_FULL_NAME}}. Your job is to:

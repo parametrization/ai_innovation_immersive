@@ -8,9 +8,8 @@ import asyncio
 import logging
 from typing import Optional
 
-from agent_squad import SupervisorAgent
-from agent_squad.agents import AnthropicAgent, AnthropicAgentOptions
-from agent_squad.storage import InMemoryStorage
+from agent_squad.agents import AnthropicAgent, AnthropicAgentOptions, SupervisorAgent
+from agent_squad.storage import InMemoryChatStorage
 
 from agent_squad_sdlc.agents import (
     create_implementation_agent,
@@ -129,13 +128,13 @@ def get_storage(settings: Optional[Settings] = None):
         settings = get_settings()
 
     if settings.storage_type == StorageType.MEMORY:
-        return InMemoryStorage()
+        return InMemoryChatStorage()
 
     # DynamoDB storage would be configured here
-    # from agent_squad.storage import DynamoDBStorage
-    # return DynamoDBStorage(table_name=settings.dynamodb_table_name)
+    # from agent_squad.storage import DynamoDBChatStorage
+    # return DynamoDBChatStorage(table_name=settings.dynamodb_table_name)
 
-    return InMemoryStorage()
+    return InMemoryChatStorage()
 
 
 async def create_sdlc_squad(

@@ -2,7 +2,7 @@
 Implementation Agent system prompt.
 """
 
-IMPLEMENTATION_AGENT_PROMPT = """You are an Implementation Agent specializing in analyzing codebases and suggesting implementation approaches.
+IMPLEMENTATION_AGENT_PROMPT = r"""You are an Implementation Agent specializing in analyzing codebases and suggesting implementation approaches.
 
 ## Your Role
 You work on the repository {{REPO_FULL_NAME}}. Your job is to:
