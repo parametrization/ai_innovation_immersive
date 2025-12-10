@@ -1,0 +1,66 @@
+# SAM CLI configuration for SDLC Agent Squad
+
+version = 0.1
+
+[default]
+[default.global.parameters]
+stack_name = "sdlc-agent-squad"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.validate.parameters]
+lint = true
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+confirm_changeset = true
+resolve_s3 = true
+s3_prefix = "sdlc-agent-squad"
+region = "us-east-1"
+disable_rollback = false
+
+[default.package.parameters]
+resolve_s3 = true
+
+[default.sync.parameters]
+watch = true
+
+[default.local_start_api.parameters]
+warm_containers = "EAGER"
+
+[default.local_start_lambda.parameters]
+warm_containers = "EAGER"
+
+# Development environment
+[dev]
+[dev.deploy.parameters]
+stack_name = "dev-sdlc-agent-squad"
+s3_prefix = "dev-sdlc-agent-squad"
+parameter_overrides = [
+    "Environment=development",
+]
+tags = "Environment=development Application=sdlc-agent-squad"
+
+# Staging environment
+[staging]
+[staging.deploy.parameters]
+stack_name = "staging-sdlc-agent-squad"
+s3_prefix = "staging-sdlc-agent-squad"
+parameter_overrides = [
+    "Environment=staging",
+]
+tags = "Environment=staging Application=sdlc-agent-squad"
+
+# Production environment
+[prod]
+[prod.deploy.parameters]
+stack_name = "prod-sdlc-agent-squad"
+s3_prefix = "prod-sdlc-agent-squad"
+parameter_overrides = [
+    "Environment=production",
+]
+confirm_changeset = true
+disable_rollback = false
+tags = "Environment=production Application=sdlc-agent-squad"

@@ -1,0 +1,247 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SDLC Agent Squad - Multi-agent SDLC automation with Claude
+
+Parameters:
+  Environment:
+    Type: String
+    Default: development
+    AllowedValues:
+      - development
+      - staging
+      - production
+    Description: Deployment environment
+
+  AnthropicApiKeySecret:
+    Type: String
+    Description: ARN of Secrets Manager secret containing Anthropic API key
+
+  GitHubAppIdSecret:
+    Type: String
+    Description: ARN of Secrets Manager secret containing GitHub App ID
+
+  GitHubAppPrivateKeySecret:
+    Type: String
+    Description: ARN of Secrets Manager secret containing GitHub App private key
+
+  GitHubWebhookSecret:
+    Type: String
+    Description: ARN of Secrets Manager secret containing GitHub webhook secret
+
+  GitHubOwner:
+    Type: String
+    Description: GitHub repository owner
+
+  GitHubRepo:
+    Type: String
+    Description: GitHub repository name
+
+  ClaudeModelId:
+    Type: String
+    Default: claude-sonnet-4-20250514
+    Description: Claude model ID to use
+
+Globals:
+  Function:
+    Timeout: 300
+    MemorySize: 1024
+    Runtime: python3.11
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        GITHUB_OWNER: !Ref GitHubOwner
+        GITHUB_REPO: !Ref GitHubRepo
+        CLAUDE_MODEL_ID: !Ref ClaudeModelId
+        STORAGE_TYPE: dynamodb
+        DYNAMODB_TABLE_NAME: !Ref ConversationTable
+        AWS_REGION: !Ref AWS::Region
+
+Resources:
+  # DynamoDB table for conversation storage
+  ConversationTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${Environment}-sdlc-agent-conversations"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: sdlc-agent-squad
+
+  # SQS queue for async event processing
+  EventQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${Environment}-sdlc-agent-events"
+      VisibilityTimeout: 360
+      MessageRetentionPeriod: 1209600  # 14 days
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Dead letter queue for failed events
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${Environment}-sdlc-agent-dlq"
+      MessageRetentionPeriod: 1209600
+
+  # Lambda function for webhook handling
+  WebhookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${Environment}-sdlc-webhook"
+      Handler: agent_squad_sdlc.lambda_handler.webhook_handler
+      CodeUri: ../../agent_squad_sdlc/
+      Description: GitHub webhook handler for SDLC Agent Squad
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConversationTable
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt EventQueue.QueueName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource:
+                - !Ref AnthropicApiKeySecret
+                - !Ref GitHubAppIdSecret
+                - !Ref GitHubAppPrivateKeySecret
+                - !Ref GitHubWebhookSecret
+      Environment:
+        Variables:
+          ANTHROPIC_API_KEY_SECRET: !Ref AnthropicApiKeySecret
+          GITHUB_APP_ID_SECRET: !Ref GitHubAppIdSecret
+          GITHUB_APP_PRIVATE_KEY_SECRET: !Ref GitHubAppPrivateKeySecret
+          GITHUB_WEBHOOK_SECRET_ARN: !Ref GitHubWebhookSecret
+          EVENT_QUEUE_URL: !Ref EventQueue
+      Events:
+        WebhookApi:
+          Type: Api
+          Properties:
+            Path: /webhook
+            Method: POST
+            RestApiId: !Ref WebhookApi
+
+  # Lambda function for async event processing
+  ProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${Environment}-sdlc-processor"
+      Handler: agent_squad_sdlc.lambda_handler.process_event
+      CodeUri: ../../agent_squad_sdlc/
+      Description: Async event processor for SDLC Agent Squad
+      Timeout: 900  # 15 minutes for long-running agent tasks
+      MemorySize: 2048
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConversationTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource:
+                - !Ref AnthropicApiKeySecret
+                - !Ref GitHubAppIdSecret
+                - !Ref GitHubAppPrivateKeySecret
+                - !Ref GitHubWebhookSecret
+      Environment:
+        Variables:
+          ANTHROPIC_API_KEY_SECRET: !Ref AnthropicApiKeySecret
+          GITHUB_APP_ID_SECRET: !Ref GitHubAppIdSecret
+          GITHUB_APP_PRIVATE_KEY_SECRET: !Ref GitHubAppPrivateKeySecret
+          GITHUB_WEBHOOK_SECRET_ARN: !Ref GitHubWebhookSecret
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt EventQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+
+  # API Gateway for webhook endpoint
+  WebhookApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub "${Environment}-sdlc-webhook-api"
+      StageName: !Ref Environment
+      Description: SDLC Agent Squad Webhook API
+      EndpointConfiguration:
+        Type: REGIONAL
+      Tags:
+        Environment: !Ref Environment
+
+  # CloudWatch Log Group for webhook function
+  WebhookLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Environment}-sdlc-webhook"
+      RetentionInDays: 30
+
+  # CloudWatch Log Group for processor function
+  ProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Environment}-sdlc-processor"
+      RetentionInDays: 30
+
+  # CloudWatch Alarm for errors
+  ErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${Environment}-sdlc-agent-errors"
+      AlarmDescription: Alarm when SDLC Agent Squad has errors
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ProcessorFunction
+
+Outputs:
+  WebhookUrl:
+    Description: GitHub Webhook URL
+    Value: !Sub "https://${WebhookApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/webhook"
+    Export:
+      Name: !Sub "${Environment}-SDLCWebhookUrl"
+
+  ConversationTableName:
+    Description: DynamoDB table for conversations
+    Value: !Ref ConversationTable
+    Export:
+      Name: !Sub "${Environment}-SDLCConversationTable"
+
+  EventQueueUrl:
+    Description: SQS queue for events
+    Value: !Ref EventQueue
+    Export:
+      Name: !Sub "${Environment}-SDLCEventQueue"
+
+  WebhookFunctionArn:
+    Description: Webhook Lambda function ARN
+    Value: !GetAtt WebhookFunction.Arn
+
+  ProcessorFunctionArn:
+    Description: Processor Lambda function ARN
+    Value: !GetAtt ProcessorFunction.Arn
