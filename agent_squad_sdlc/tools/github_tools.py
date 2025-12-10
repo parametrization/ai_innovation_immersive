@@ -2,6 +2,7 @@
 GitHub API tools for SDLC agents.
 
 Provides async methods for interacting with GitHub Issues, PRs, and repository content.
+Supports both Personal Access Token (PAT) and GitHub App authentication.
 """
 
 import base64
@@ -10,8 +11,7 @@ from typing import Any, Optional
 
 import httpx
 
-from agent_squad_sdlc.config import Settings, get_settings
-from agent_squad_sdlc.github_app import GitHubApp
+from agent_squad_sdlc.config import GitHubAuthType, Settings, get_settings
 
 
 class GitHubTools:
@@ -19,28 +19,51 @@ class GitHubTools:
     GitHub API operations for SDLC automation.
 
     Provides methods for issues, PRs, code, and repository operations.
+    Supports both PAT and GitHub App authentication.
     """
+
+    GITHUB_API_URL = "https://api.github.com"
 
     def __init__(
         self,
-        github_app: Optional[GitHubApp] = None,
         settings: Optional[Settings] = None,
     ):
         """
         Initialize GitHub tools.
 
         Args:
-            github_app: GitHub App instance for authentication
             settings: Optional settings override
         """
         self.settings = settings or get_settings()
-        self.github_app = github_app or GitHubApp(self.settings)
         self._client: Optional[httpx.AsyncClient] = None
+        self._github_app = None  # Lazy-loaded if needed
 
     async def _get_client(self) -> httpx.AsyncClient:
-        """Get authenticated HTTP client."""
+        """Get authenticated HTTP client based on auth type."""
         if self._client is None:
-            self._client = await self.github_app.get_authenticated_client()
+            if self.settings.github_auth_type == GitHubAuthType.TOKEN:
+                # Use Personal Access Token
+                token = self.settings.github_token
+                if not token:
+                    raise ValueError(
+                        "GITHUB_TOKEN is required when GITHUB_AUTH_TYPE=token"
+                    )
+                self._client = httpx.AsyncClient(
+                    base_url=self.GITHUB_API_URL,
+                    headers={
+                        "Authorization": f"token {token.get_secret_value()}",
+                        "Accept": "application/vnd.github+json",
+                        "X-GitHub-Api-Version": "2022-11-28",
+                    },
+                    timeout=30.0,
+                )
+            else:
+                # Use GitHub App
+                from agent_squad_sdlc.github_app import GitHubApp
+                if self._github_app is None:
+                    self._github_app = GitHubApp(self.settings)
+                self._client = await self._github_app.get_authenticated_client()
+
         return self._client
 
     async def close(self) -> None:
@@ -48,7 +71,9 @@ class GitHubTools:
         if self._client:
             await self._client.aclose()
             self._client = None
-        await self.github_app.close()
+        if self._github_app:
+            await self._github_app.close()
+            self._github_app = None
 
     @property
     def repo_path(self) -> str:

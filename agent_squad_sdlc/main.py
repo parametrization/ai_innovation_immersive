@@ -19,7 +19,6 @@ from agent_squad_sdlc.agents import (
     create_story_writer_agent,
 )
 from agent_squad_sdlc.config import Settings, StorageType, get_settings
-from agent_squad_sdlc.github_app import GitHubApp
 from agent_squad_sdlc.tools import GitHubTools
 
 # Configure logging
@@ -154,16 +153,9 @@ async def create_sdlc_squad(
 
     logger.info("Initializing SDLC Agent Squad...")
 
-    # Initialize GitHub App and tools
-    github_app = GitHubApp(settings)
-    github_tools = GitHubTools(github_app, settings)
-
-    # Verify GitHub App installation
-    try:
-        installation = await github_app.verify_app_installation()
-        logger.info(f"GitHub App installed on: {installation.get('account', {}).get('login')}")
-    except Exception as e:
-        logger.warning(f"Could not verify GitHub App installation: {e}")
+    # Initialize GitHub tools (handles auth internally based on settings)
+    github_tools = GitHubTools(settings)
+    logger.info(f"Using GitHub auth type: {settings.github_auth_type.value}")
 
     # Create team agents
     logger.info("Creating team agents...")

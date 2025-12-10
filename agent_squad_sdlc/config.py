@@ -26,6 +26,12 @@ class Environment(str, Enum):
     PRODUCTION = "production"
 
 
+class GitHubAuthType(str, Enum):
+    """GitHub authentication methods."""
+    APP = "app"
+    TOKEN = "token"
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
@@ -55,19 +61,36 @@ class Settings(BaseSettings):
         description="Claude model to use for agents"
     )
 
-    # GitHub App
-    github_app_id: str = Field(
+    # GitHub Authentication Method
+    github_auth_type: GitHubAuthType = Field(
+        default=GitHubAuthType.TOKEN,
+        description="GitHub auth method: 'token' (PAT) or 'app' (GitHub App)"
+    )
+
+    # GitHub Personal Access Token (simpler option)
+    github_token: Optional[SecretStr] = Field(
+        default=None,
+        description="GitHub Personal Access Token (use this OR GitHub App)"
+    )
+
+    # GitHub App (advanced option)
+    github_app_id: Optional[str] = Field(
+        default=None,
         description="GitHub App ID"
     )
-    github_app_private_key: SecretStr = Field(
+    github_app_private_key: Optional[SecretStr] = Field(
+        default=None,
         description="GitHub App private key (PEM format)"
-    )
-    github_webhook_secret: SecretStr = Field(
-        description="GitHub webhook secret for signature verification"
     )
     github_installation_id: Optional[str] = Field(
         default=None,
         description="GitHub App installation ID (optional, can be derived)"
+    )
+
+    # Webhook (for both auth methods)
+    github_webhook_secret: Optional[SecretStr] = Field(
+        default=None,
+        description="GitHub webhook secret for signature verification"
     )
 
     # Repository
